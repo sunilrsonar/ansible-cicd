@@ -1,0 +1,55 @@
+---
+- name: Install Java, Docker, Sonarqube, Trivy
+  hosts: all
+  become: yes
+  tasks:
+    - name: update repo
+      apt:
+        update_cache: yes
+    - name: Install tools
+      apt:
+        name:
+          - openjdk-17-jre-headless
+          - git
+          - maven
+          - docker.io
+        state: present
+        update_cache: yes
+    - name: set permisions for docker socket
+      command: chmod 666 /var/run/docker.sock
+      become: true
+    - name: Run sonarqube container
+      command: docker run -d -p 9000:9000 sonarqube:lts-community
+      become: true
+    - name: Install Trivy
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - wget
+        - apt-transport-https
+        - gnupg
+        - lsb-release
+    - name: Install trivy 
+      shell: |
+        sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy -y
+      args:
+        executable: /bin/bash
+    - name: download sonarqube
+      get_url:
+        url: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-linux-x64.zip
+        dest: /tmp/sonar-scanner-cli-7.1.0.4889-linux-x64.zip
+    - name: Install unzip
+      apt:
+        name: unzip
+        state: present
+    - name: unzip the file
+      unarchive:
+        src: /tmp/sonar-scanner-cli-7.1.0.4889-linux-x64.zip
+        dest: /home/aizen-sosuke/
+        remote_src: yes
+        creates: /home/aizen-sosuke/sonar-scanner-cli-7.1.0.4889-linux-x64

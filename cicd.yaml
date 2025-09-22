@@ -1,0 +1,60 @@
+---
+- name: git clone
+  hosts: all
+  become: yes
+  vars_files:
+    - credentials.yaml
+  tasks:
+    - name: git clone or pull
+      ansible.builtin.git:
+        repo: "{{ repository_url }}"
+        dest: /home/aizen-sosuke/secretsanta-generator
+        update: yes
+      register: git_result
+    - name: Check if repository was cloned or updated
+      debug:
+        msg: "{{ git_result }}"
+    - name: copy shell script to remote server
+      copy:
+        src: script.sh
+        dest: /home/aizen-sosuke/secretsanta-generator/script.sh
+    - name: permission to shell script
+      command: chmod +x script.sh
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+    - name: execute shell script
+      command: ./script.sh
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+    - name: Run mvn compile
+      command: mvn compile
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator 
+    - name: Run mvn Test
+      command: mvn test
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+    - name: Execute SonarScanner
+      command:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+        argv:
+          - /home/aizen-sosuke/sonar-scanner-7.1.0.4889-linux-x64/bin/sonar-scanner
+          - -Dsonar.host.url={{ SONARQUBE_URL }}
+          - -Dsonar.login={{ SONARQUBE_TOKEN }}
+          - -Dsonar.projectKey=Santa
+          - -Dsonar.projectName=Santa
+          - -Dsonar.java.binaries=.
+    - name: Run mvn build
+      command: mvn package
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+    - name: docker image build
+      command: docker build -t sunilrsonar/app2:latest .
+      args:
+        chdir: /home/aizen-sosuke/secretsanta-generator
+    - name: docker login 
+      command: docker login -u {{ DOCKER_USERNAME }} -p {{ DOCKER_PASSWORD }}
+    - name: docker push
+      command: docker push sunilrsonar/app2:latest
+    - name: docker container Run
+      command: docker run -d -p 8080:8080 sunilrsonar/app2:latest
