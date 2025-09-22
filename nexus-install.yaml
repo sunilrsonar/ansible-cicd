@@ -1,0 +1,102 @@
+---
+- name: Install pre-requites tools java,.net tools
+  hosts: web1
+  become: true
+  tasks:
+    - name: update repo and apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+    - name: install java
+      ansible.builtin.apt:
+        name: openjdk-11-jdk
+        state: present
+    - name: install .net tools
+      ansible.builtin.apt:
+        name: net-tools
+        state: present
+
+- name: Download nexus package and untar
+  hosts: web1
+  become: true
+  tasks:
+    - name: check Nexus folder exists
+      ansible.builtin.stat:
+        path: /opt/nexus
+      register: stat_result
+    - name: Download nexus package 
+      ansible.builtin.get_url:
+        url: https://download.sonatype.com/nexus/3/nexus-3.82.0-08-linux-x86_64.tar.gz
+        dest: /opt/ 
+      register: download_result
+    - name: untar nexus package 
+      ansible.builtin.unarchive:
+        src: "{{download_result.dest}}"
+        dest: /opt/
+        remote_src: yes 
+      when: not stat_result.stat.exists 
+    - name: find the nexus folder 
+      ansible.builtin.find: 
+        path: /opt/ 
+        pattern: "nexus-*"
+        file_type: directory 
+      register: find_result
+    - name: rename nexus folder 
+      command: mv {{find_result.files[0].path}} /opt/nexus
+      when: find_result.matched > 0 
+
+- name: create nexus user and group 
+  hosts: web1 
+  become: true
+  tasks: 
+    - name: create nexus group 
+      ansible.builtin.group: 
+        name: nexus
+        state: present
+    - name: create nexus user 
+      ansible.builtin.user:
+        name: nexus
+        group: nexus
+    - name: make nexus user owner of nexus folder 
+      ansible.builtin.file:
+        path: /opt/nexus 
+        state: directory 
+        owner: nexus
+        group: nexus 
+        recurse: yes 
+    - name: make nexus user owner of nexus data folder
+      ansible.builtin.file:
+        path: /opt/sonatype-work 
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+- name: start nexus with nexus user 
+  hosts: web1
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Ensure nexus script is executable
+      ansible.builtin.file:
+        path: /opt/nexus/bin/nexus
+        mode: '0755'
+    - name: start nexus
+      ansible.builtin.command: /opt/nexus/bin/nexus start
+
+- name: verify nexus 
+  hosts: web1 
+  become: true
+  tasks: 
+    - name: check by ps 
+      ansible.builtin.shell: ps aux | grep '[n]exus' 
+      register: app_status 
+    - name: to see output
+      ansible.builtin.debug: msg={{app_status.stdout_lines}}
+    - name: wait a minute 
+      ansible.builtin.pause: 
+        minutes: 2
+    - name: netstat check 
+      ansible.builtin.shell: netstat -tuln
+      register: app_result 
+    - name: to see output
+      ansible.builtin.debug: msg={{app_result.stdout_lines}}
