@@ -1,5 +1,5 @@
 ---
-- name: Install pre-requites tools java,.net tools
+- name: Install pre-requites tools java,dot-net tools
   hosts: web1
   become: true
   tasks:
